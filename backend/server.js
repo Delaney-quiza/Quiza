@@ -458,7 +458,7 @@ app.use(middleware.errorHandler);
 // Setup database on start
 db.setupDatabase();
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🇿🇦 SportQ API running on http://localhost:${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`   Database: ${process.env.DATABASE_URL || "sportq.db"}\n`);
