@@ -1,0 +1,38 @@
+{
+  "name": "sportq",
+  "version": "1.0.0",
+  "description": "Daily sports trivia app — SA-weighted with global appeal",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "nodemon backend/server.js",
+    "dev:frontend": "cd frontend && vite",
+    "build": "cd frontend && vite build",
+    "start": "node backend/server.js",
+    "db:setup": "node scripts/seed-database.js --setup",
+    "db:seed": "node scripts/seed-database.js",
+    "generate": "node scripts/generate-questions.js",
+    "cron": "node scripts/cron-scheduler.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.0.0",
+    "cors": "^2.8.5",
+    "cron": "^3.1.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.18.0",
+    "express-rate-limit": "^7.1.0",
+    "jsonwebtoken": "^9.0.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "concurrently": "^8.2.0",
+    "nodemon": "^3.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.0",
+    "vite": "^5.0.0"
+  }
+}
