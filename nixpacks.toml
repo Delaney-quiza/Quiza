@@ -1,0 +1,5 @@
+[phases.build]
+cmds = ["npm install", "cd frontend && npx vite build"]
+
+[start]
+cmd = "npm run db:seed -- --force && node backend/server.js"
