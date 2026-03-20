@@ -21,7 +21,7 @@ const SEED_QUESTIONS = [
   { question: "Which SA cricketer holds the record for the fastest ODI century?", option_a: "Herschelle Gibbs", option_b: "AB de Villiers", option_c: "Quinton de Kock", option_d: "David Miller", correct_answer: 1, category: "SA Cricket", difficulty: "easy" },
   { question: "Who famously hit 6 sixes in an over in a 2007 World Cup match?", option_a: "AB de Villiers", option_b: "Herschelle Gibbs", option_c: "Jacques Kallis", option_d: "Lance Klusener", correct_answer: 1, category: "SA Cricket", difficulty: "medium" },
   { question: "Which ground is known as 'The Bullring' in SA cricket?", option_a: "Newlands", option_b: "SuperSport Park", option_c: "The Wanderers", option_d: "Kingsmead", correct_answer: 2, category: "SA Cricket", difficulty: "medium" },
-  { question: "How many balls did AB de Villiers face for his record 31-ball ODI century?", option_a: "31", option_b: "44", option_c: "36", option_d: "28", correct_answer: 0, category: "SA Cricket", difficulty: "medium" },
+  { question: "How many balls did AB de Villiers face for his record ODI century?", option_a: "31", option_b: "44", option_c: "36", option_d: "28", correct_answer: 0, category: "SA Cricket", difficulty: "medium" },
   { question: "Which SA fast bowler was known as 'White Lightning'?", option_a: "Shaun Pollock", option_b: "Makhaya Ntini", option_c: "Allan Donald", option_d: "Dale Steyn", correct_answer: 2, category: "SA Cricket", difficulty: "medium" },
 
   // === SA FOOTBALL ===
