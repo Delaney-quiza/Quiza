@@ -219,7 +219,7 @@ export default function Quiz() {
 
   const getShareText = () => {
     if (!result) return "";
-    return `I played QuiZa today and scored ${result.score}/300. Can you do better?\n\nPlay Now → quiza.co.za`;
+    return `I played QuiZa today and scored ${result.score}/300. Can you do better?\n\nPlay Now → www.quiza.co.za`;
   };
 
   const shareWhatsApp = () => {
@@ -228,7 +228,7 @@ export default function Quiz() {
   };
 
   const shareFacebook = () => {
-    const url = encodeURIComponent("https://quiza.co.za");
+    const url = encodeURIComponent("https://www.quiza.co.za");
     const quote = encodeURIComponent(getShareText());
     window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${quote}`, "_blank");
   };
