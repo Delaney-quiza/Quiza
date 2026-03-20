@@ -63,7 +63,7 @@ function playerAuthMiddleware(req, res, next) {
   const db = require("./database");
   const player = db.players.getByToken(token);
   if (!player) {
-    return res.status(401).json({ error: "Invalid player token" });
+    return res.status(401).json({ error: "You've already played today! Come back tomorrow for a new quiz." });
   }
 
   req.player = player;

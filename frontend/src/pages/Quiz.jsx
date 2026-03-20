@@ -318,7 +318,7 @@ export default function Quiz() {
         <div style={{textAlign:"center",padding:"60px 0",animation:"fadeScale .5s ease both"}}>
           <div style={{fontSize:48,marginBottom:16}}>😔</div>
           <h2 style={{fontFamily:S.serif,fontSize:22,color:"#fff",margin:"0 0 8px",fontWeight:700}}>Eish!</h2>
-          <p style={{color:"#666",fontSize:13,maxWidth:320,margin:"0 auto"}}>{error || "Something went wrong. Try refreshing."}</p>
+          <p style={{color:"#666",fontSize:13,maxWidth:320,margin:"0 auto"}}>{error || {error === "Invalid player token" ? "Your session expired. Tap Try Again to start fresh!" : error || "Something went wrong. Try refreshing."}
           <button onClick={() => window.location.reload()} style={{marginTop:24,background:"#1a1a1e",border:"1px solid #2a2a2e",borderRadius:100,padding:"12px 32px",color:"#ccc",fontSize:13,fontWeight:600,cursor:"pointer"}}>
             Try Again
           </button>
