@@ -1,5 +1,6 @@
 // scripts/seed-database.js
 // Seeds the database with initial question bank and schedules
+// Safe to run on every deploy — will NOT wipe existing data unless --force is passed manually
 
 require("dotenv").config();
 const db = require("../backend/database");
@@ -89,17 +90,28 @@ const SEED_QUESTIONS = [
 // ═══════════════════════════════════════
 
 function seed() {
-  console.log("\n🌱 Setting up SportQ database...\n");
+  console.log("\n🌱 Setting up QuiZa database...\n");
 
-  // Setup tables
+  // Setup tables (safe — uses CREATE TABLE IF NOT EXISTS)
   db.setupDatabase();
 
-  // Check if already seeded
+  // ── SAFE BY DEFAULT ──────────────────────────────────────────────────
+  // Never wipe player data on deploy. Only seed questions if the bank is
+  // empty (fresh install). Pass --force only if you intentionally want to
+  // re-seed questions on a clean dev database.
+  // ─────────────────────────────────────────────────────────────────────
   const existing = db.questions.getAll();
   if (existing.length > 0 && !process.argv.includes("--force")) {
-    console.log(`⚠️  Database already has ${existing.length} questions.`);
-    console.log("   Use --force to re-seed.\n");
+    console.log(`✅ Database already has ${existing.length} questions — skipping seed.`);
+    console.log("   Player data preserved.\n");
+
+    // Still try to schedule any unscheduled upcoming days
+    scheduleUpcomingDays();
     return;
+  }
+
+  if (process.argv.includes("--force")) {
+    console.log("⚠️  --force flag detected: re-seeding questions (player data NOT affected).\n");
   }
 
   // Insert seed questions as approved
@@ -121,28 +133,42 @@ function seed() {
   console.log("\n📊 Category breakdown:");
   Object.entries(categories)
     .sort((a, b) => b[1] - a[1])
-    .forEach(([cat, count]) => {
-      console.log(`   ${cat}: ${count}`);
-    });
+    .forEach(([cat, count]) => console.log(`   ${cat}: ${count}`));
 
-  // Auto-schedule first 7 days
-  console.log("\n📅 Scheduling first 7 days...");
+  scheduleUpcomingDays();
+
+  console.log("\n🎉 Seed complete! Start the server with: npm run dev\n");
+}
+
+function scheduleUpcomingDays() {
+  // Schedule next 7 days if not already scheduled
+  console.log("\n📅 Checking schedule for next 7 days...");
   const today = new Date();
+  let scheduled = 0;
   for (let i = 0; i < 7; i++) {
     const date = new Date(today);
     date.setDate(date.getDate() + i);
     const dateStr = date.toISOString().split("T")[0];
 
+    // Skip if already scheduled
+    const existing = db.schedule.getByDate(dateStr);
+    if (existing) {
+      console.log(`   ⏭️  ${dateStr} — already scheduled`);
+      continue;
+    }
+
     const result = db.schedule.autoSchedule(dateStr);
     if (result) {
       db.schedule.publish(dateStr);
       console.log(`   ✅ ${dateStr} — scheduled and published`);
+      scheduled++;
     } else {
       console.log(`   ❌ ${dateStr} — not enough approved questions`);
     }
   }
-
-  console.log("\n🎉 Seed complete! Start the server with: npm run dev\n");
+  if (scheduled === 0) {
+    console.log("   All days already scheduled.\n");
+  }
 }
 
 // Run

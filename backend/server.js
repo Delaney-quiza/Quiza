@@ -20,14 +20,23 @@ app.use(middleware.requestLogger);
 app.use("/api", middleware.generalLimiter);
 
 // ═══════════════════════════════════════
-// HELPER: Get today's date string
+// HELPERS
 // ═══════════════════════════════════════
 
 function getToday() {
   return new Date().toISOString().split("T")[0];
 }
 
-const QUESTION_TIME_LIMIT = 15; // seconds
+const QUESTION_TIME_LIMIT = 15; // seconds per question
+const QUESTIONS_PER_QUIZ = 5;   // ← updated from 3 to 5
+const MAX_SCORE = QUESTIONS_PER_QUIZ * 100; // 500
+
+// Score a single answer: <1s = 100pts, otherwise time-based
+function scoreAnswer(timeElapsed) {
+  if (timeElapsed === null) return 0;
+  if (timeElapsed < 1) return 100;
+  return Math.max(0, Math.round(((QUESTION_TIME_LIMIT - timeElapsed) / QUESTION_TIME_LIMIT) * 100));
+}
 
 // ═══════════════════════════════════════
 // PUBLIC ROUTES — QUIZ
@@ -42,8 +51,7 @@ app.get("/api/quiz/today", (req, res) => {
     return res.status(404).json({ error: "No quiz scheduled for today" });
   }
 
-  // Strip correct answers before sending to client
-const correct_answers = schedule.questions.map(q => q.correct_answer);
+  const correct_answers = schedule.questions.map(q => q.correct_answer);
   const questions = schedule.questions.map((q, i) => ({
     id: q.id,
     index: i,
@@ -56,9 +64,8 @@ const correct_answers = schedule.questions.map(q => q.correct_answer);
   res.json({
     date: today,
     questions,
-correct_answers,
+    correct_answers,
     time_limit: QUESTION_TIME_LIMIT,
-correct_answers,
     server_time: Date.now(),
   });
 });
@@ -68,8 +75,8 @@ app.post("/api/quiz/submit", middleware.quizSubmitLimiter, auth.playerAuthMiddle
   const today = getToday();
   const { answers, timings, start_time } = req.body;
 
-  // Validate input
-  if (!answers || !timings || answers.length !== 3 || timings.length !== 3) {
+  // Validate input — allow 5 questions
+  if (!answers || !timings || answers.length !== QUESTIONS_PER_QUIZ || timings.length !== QUESTIONS_PER_QUIZ) {
     return res.status(400).json({ error: "Invalid submission format" });
   }
 
@@ -84,14 +91,13 @@ app.post("/api/quiz/submit", middleware.quizSubmitLimiter, auth.playerAuthMiddle
     return res.status(404).json({ error: "No quiz scheduled for today" });
   }
 
-  // Validate timings (anti-cheat: reject if any answer was impossibly fast or slow)
-  for (let i = 0; i < 3; i++) {
+  // Validate timings (anti-cheat)
+  for (let i = 0; i < QUESTIONS_PER_QUIZ; i++) {
     if (timings[i] !== null) {
       if (timings[i] < 0.1) {
         return res.status(400).json({ error: "Invalid timing detected" });
       }
       if (timings[i] > QUESTION_TIME_LIMIT + 1) {
-        // Allow 1s grace for network latency
         timings[i] = null; // Treat as expired
       }
     }
@@ -100,9 +106,8 @@ app.post("/api/quiz/submit", middleware.quizSubmitLimiter, auth.playerAuthMiddle
   // Server-side timestamp validation
   if (start_time) {
     const totalElapsed = (Date.now() - start_time) / 1000;
-    const maxPossible = QUESTION_TIME_LIMIT * 3 + 30; // 30s buffer for reveals/transitions
+    const maxPossible = QUESTION_TIME_LIMIT * QUESTIONS_PER_QUIZ + 60; // buffer for reveals/transitions
     if (totalElapsed > maxPossible) {
-      // Suspicious — took too long overall
       console.warn(`⚠️ Suspicious timing from player ${req.player.id}: ${totalElapsed}s total`);
     }
   }
@@ -112,7 +117,7 @@ app.post("/api/quiz/submit", middleware.quizSubmitLimiter, auth.playerAuthMiddle
   let score = 0;
   let totalTime = 0;
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < QUESTIONS_PER_QUIZ; i++) {
     const isCorrect = answers[i] === schedule.questions[i].correct_answer;
     correct.push(isCorrect);
 
@@ -121,26 +126,25 @@ app.post("/api/quiz/submit", middleware.quizSubmitLimiter, auth.playerAuthMiddle
     } else {
       totalTime += timings[i];
       if (isCorrect) {
-        score += Math.max(0, Math.round(((QUESTION_TIME_LIMIT - timings[i]) / QUESTION_TIME_LIMIT) * 100));
+        score += scoreAnswer(timings[i]);
       }
     }
   }
 
   const correctCount = correct.filter(Boolean).length;
-  const isPerfect = correctCount === 3;
+  const isPerfect = correctCount === QUESTIONS_PER_QUIZ;
 
-  // Save result
+  // Save result (5 questions)
   db.players.saveResult(req.player.id, today, {
     answers, timings, correct, score, totalTime,
   });
 
-  // Update player stats
+  // Update player stats — total_games increments here (single source of truth)
   const updatedPlayer = db.players.updateStats(req.player.id, score, isPerfect, today);
 
   // Check for new badges
   const badges = calculateBadges(updatedPlayer, timings, correct);
 
-  // Return results with correct answers
   res.json({
     date: today,
     correct,
@@ -167,16 +171,16 @@ app.post("/api/quiz/submit", middleware.quizSubmitLimiter, auth.playerAuthMiddle
 // ═══════════════════════════════════════
 
 const BADGE_DEFINITIONS = [
-  { id: "first_perfect", name: "Sharp Shooter", icon: "🎯", desc: "Get all 3 correct" },
+  { id: "first_perfect", name: "Sharp Shooter", icon: "🎯", desc: "Get all 5 correct" },
   { id: "streak_3", name: "Hat Trick", icon: "🔥", desc: "3-day streak" },
   { id: "streak_7", name: "On Fire", icon: "⚡", desc: "7-day streak" },
   { id: "streak_30", name: "Legendary", icon: "👑", desc: "30-day streak" },
   { id: "games_10", name: "Regular", icon: "📅", desc: "Play 10 days" },
   { id: "games_50", name: "Devotee", icon: "💎", desc: "Play 50 days" },
-  { id: "speed_demon", name: "Speed Demon", icon: "💨", desc: "All 3 under 5s each" },
+  { id: "speed_demon", name: "Speed Demon", icon: "💨", desc: "All 5 under 5s each" },
   { id: "perfect_5", name: "Perfectionist", icon: "🏆", desc: "5 perfect games" },
   { id: "perfect_20", name: "Mastermind", icon: "🧠", desc: "20 perfect games" },
-  { id: "lightning", name: "Lightning Round", icon: "⏱️", desc: "All 3 in under 10s total" },
+  { id: "lightning", name: "Lightning Round", icon: "⏱️", desc: `All ${QUESTIONS_PER_QUIZ} in under 15s total` },
 ];
 
 function calculateBadges(player, timings, correct) {
@@ -193,7 +197,7 @@ function calculateBadges(player, timings, correct) {
     speed_demon: correct.every(Boolean) && timings.every((t) => t !== null && t < 5),
     perfect_5: player.perfect_games >= 5,
     perfect_20: player.perfect_games >= 20,
-    lightning: timings.reduce((a, t) => a + (t === null ? QUESTION_TIME_LIMIT : t), 0) < 10,
+    lightning: timings.reduce((a, t) => a + (t === null ? QUESTION_TIME_LIMIT : t), 0) < 15,
   };
 
   const newBadges = [];
@@ -204,7 +208,6 @@ function calculateBadges(player, timings, correct) {
     }
   }
 
-  // Save updated badges
   if (newBadges.length > 0) {
     const dbInstance = db.getDb();
     dbInstance.prepare("UPDATE players SET badges = ? WHERE id = ?").run(JSON.stringify(earned), player.id);
@@ -271,6 +274,13 @@ app.get("/api/player/today", auth.playerAuthMiddleware, (req, res) => {
   res.json({ played: true, result });
 });
 
+// Get today's leaderboard
+app.get("/api/player/leaderboard", auth.playerAuthMiddleware, (req, res) => {
+  const today = getToday();
+  const leaderboard = db.players.getLeaderboard(today, 10);
+  res.json({ leaderboard, date: today });
+});
+
 // ═══════════════════════════════════════
 // ADMIN ROUTES
 // ═══════════════════════════════════════
@@ -332,7 +342,6 @@ app.delete("/api/admin/questions/:id", auth.adminAuthMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
-// Bulk approve/reject
 app.post("/api/admin/questions/bulk", auth.adminAuthMiddleware, (req, res) => {
   const { ids, action } = req.body;
   if (!ids || !Array.isArray(ids) || !["approve", "reject"].includes(action)) {
@@ -367,11 +376,11 @@ app.get("/api/admin/schedule", auth.adminAuthMiddleware, (req, res) => {
 
 app.post("/api/admin/schedule", auth.adminAuthMiddleware, (req, res) => {
   const { date, question_ids } = req.body;
-  if (!date || !question_ids || question_ids.length !== 3) {
-    return res.status(400).json({ error: "Need date and exactly 3 question IDs" });
+  if (!date || !question_ids || question_ids.length !== QUESTIONS_PER_QUIZ) {
+    return res.status(400).json({ error: `Need date and exactly ${QUESTIONS_PER_QUIZ} question IDs` });
   }
 
-  db.schedule.create(date, question_ids[0], question_ids[1], question_ids[2], req.admin.email);
+  db.schedule.create(date, question_ids[0], question_ids[1], question_ids[2], question_ids[3], question_ids[4], req.admin.email);
   const schedule = db.schedule.getByDate(date);
   res.json({ schedule });
 });
@@ -406,7 +415,6 @@ app.post("/api/admin/generate", auth.adminAuthMiddleware, middleware.aiGenerateL
     const generateQuestions = require("../scripts/generate-questions");
     const batchId = db.batches.create(count);
 
-    // Run generation async
     generateQuestions.generate(count, categories)
       .then((questions) => {
         const ids = db.questions.createBatch(questions);
@@ -449,18 +457,16 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-// Error handler
 app.use(middleware.errorHandler);
 
 // ═══════════════════════════════════════
 // START
 // ═══════════════════════════════════════
 
-// Setup database on start
 db.setupDatabase();
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`\n🇿🇦 SportQ API running on http://localhost:${PORT}`);
+  console.log(`\n🇿🇦 QuiZa API running on http://localhost:${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`   Database: ${process.env.DATABASE_URL || "sportq.db"}\n`);
 });

@@ -1,5 +1,5 @@
 // backend/database.js
-// SQLite database layer — swap to PostgreSQL for production via env var
+// SQLite database layer
 
 const path = require("path");
 
@@ -42,13 +42,15 @@ function setupDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Daily schedule
+    -- Daily schedule (5 questions)
     CREATE TABLE IF NOT EXISTS daily_schedule (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       quiz_date DATE NOT NULL UNIQUE,
       question_1_id INTEGER NOT NULL REFERENCES questions(id),
       question_2_id INTEGER NOT NULL REFERENCES questions(id),
       question_3_id INTEGER NOT NULL REFERENCES questions(id),
+      question_4_id INTEGER REFERENCES questions(id),
+      question_5_id INTEGER REFERENCES questions(id),
       is_published BOOLEAN DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       created_by TEXT DEFAULT 'system'
@@ -69,7 +71,7 @@ function setupDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Game results
+    -- Game results (5 questions)
     CREATE TABLE IF NOT EXISTS game_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       player_id INTEGER NOT NULL REFERENCES players(id),
@@ -83,6 +85,12 @@ function setupDatabase() {
       question_3_answer INTEGER,
       question_3_time REAL,
       question_3_correct BOOLEAN,
+      question_4_answer INTEGER,
+      question_4_time REAL,
+      question_4_correct BOOLEAN,
+      question_5_answer INTEGER,
+      question_5_time REAL,
+      question_5_correct BOOLEAN,
       score INTEGER NOT NULL DEFAULT 0,
       total_time REAL,
       submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -110,6 +118,22 @@ function setupDatabase() {
     CREATE INDEX IF NOT EXISTS idx_results_date ON game_results(quiz_date);
   `);
 
+  // Migration: add columns for q4/q5 if upgrading from 3-question schema
+  try {
+    db.exec(`ALTER TABLE daily_schedule ADD COLUMN question_4_id INTEGER REFERENCES questions(id)`);
+  } catch (e) { /* column already exists */ }
+  try {
+    db.exec(`ALTER TABLE daily_schedule ADD COLUMN question_5_id INTEGER REFERENCES questions(id)`);
+  } catch (e) { /* column already exists */ }
+  try {
+    db.exec(`ALTER TABLE game_results ADD COLUMN question_4_answer INTEGER`);
+    db.exec(`ALTER TABLE game_results ADD COLUMN question_4_time REAL`);
+    db.exec(`ALTER TABLE game_results ADD COLUMN question_4_correct BOOLEAN`);
+    db.exec(`ALTER TABLE game_results ADD COLUMN question_5_answer INTEGER`);
+    db.exec(`ALTER TABLE game_results ADD COLUMN question_5_time REAL`);
+    db.exec(`ALTER TABLE game_results ADD COLUMN question_5_correct BOOLEAN`);
+  } catch (e) { /* columns already exist */ }
+
   console.log("✅ Database tables created");
   return db;
 }
@@ -124,29 +148,13 @@ const questionQueries = {
     let sql = "SELECT * FROM questions WHERE 1=1";
     const params = [];
 
-    if (filters.status) {
-      sql += " AND status = ?";
-      params.push(filters.status);
-    }
-    if (filters.category) {
-      sql += " AND category = ?";
-      params.push(filters.category);
-    }
-    if (filters.difficulty) {
-      sql += " AND difficulty = ?";
-      params.push(filters.difficulty);
-    }
-    if (filters.source) {
-      sql += " AND source = ?";
-      params.push(filters.source);
-    }
+    if (filters.status) { sql += " AND status = ?"; params.push(filters.status); }
+    if (filters.category) { sql += " AND category = ?"; params.push(filters.category); }
+    if (filters.difficulty) { sql += " AND difficulty = ?"; params.push(filters.difficulty); }
+    if (filters.source) { sql += " AND source = ?"; params.push(filters.source); }
 
     sql += " ORDER BY created_at DESC";
-
-    if (filters.limit) {
-      sql += " LIMIT ?";
-      params.push(filters.limit);
-    }
+    if (filters.limit) { sql += " LIMIT ?"; params.push(filters.limit); }
 
     return db.prepare(sql).all(...params);
   },
@@ -208,7 +216,6 @@ const questionQueries = {
     }
 
     if (fields.length === 0) return null;
-
     fields.push("updated_at = CURRENT_TIMESTAMP");
     params.push(id);
 
@@ -229,9 +236,7 @@ const questionQueries = {
       rejected: db.prepare("SELECT COUNT(*) as count FROM questions WHERE status = 'rejected'").get().count,
       byCategory: db.prepare(`
         SELECT category, COUNT(*) as count, status
-        FROM questions
-        GROUP BY category, status
-        ORDER BY category
+        FROM questions GROUP BY category, status ORDER BY category
       `).all(),
     };
   },
@@ -242,40 +247,53 @@ const questionQueries = {
 };
 
 // ═══════════════════════════════════════
-// SCHEDULE QUERIES
+// SCHEDULE QUERIES (5 questions)
 // ═══════════════════════════════════════
 
 const scheduleQueries = {
   getByDate(date) {
     const db = getDb();
     const schedule = db.prepare(`
-      SELECT ds.*, 
+      SELECT ds.*,
         q1.question as q1_text, q1.option_a as q1_a, q1.option_b as q1_b, q1.option_c as q1_c, q1.option_d as q1_d, q1.correct_answer as q1_answer, q1.category as q1_category, q1.difficulty as q1_difficulty,
         q2.question as q2_text, q2.option_a as q2_a, q2.option_b as q2_b, q2.option_c as q2_c, q2.option_d as q2_d, q2.correct_answer as q2_answer, q2.category as q2_category, q2.difficulty as q2_difficulty,
-        q3.question as q3_text, q3.option_a as q3_a, q3.option_b as q3_b, q3.option_c as q3_c, q3.option_d as q3_d, q3.correct_answer as q3_answer, q3.category as q3_category, q3.difficulty as q3_difficulty
+        q3.question as q3_text, q3.option_a as q3_a, q3.option_b as q3_b, q3.option_c as q3_c, q3.option_d as q3_d, q3.correct_answer as q3_answer, q3.category as q3_category, q3.difficulty as q3_difficulty,
+        q4.question as q4_text, q4.option_a as q4_a, q4.option_b as q4_b, q4.option_c as q4_c, q4.option_d as q4_d, q4.correct_answer as q4_answer, q4.category as q4_category, q4.difficulty as q4_difficulty,
+        q5.question as q5_text, q5.option_a as q5_a, q5.option_b as q5_b, q5.option_c as q5_c, q5.option_d as q5_d, q5.correct_answer as q5_answer, q5.category as q5_category, q5.difficulty as q5_difficulty
       FROM daily_schedule ds
       JOIN questions q1 ON ds.question_1_id = q1.id
       JOIN questions q2 ON ds.question_2_id = q2.id
       JOIN questions q3 ON ds.question_3_id = q3.id
+      LEFT JOIN questions q4 ON ds.question_4_id = q4.id
+      LEFT JOIN questions q5 ON ds.question_5_id = q5.id
       WHERE ds.quiz_date = ?
     `).get(date);
 
     if (!schedule) return null;
 
+    const questions = [
+      { id: schedule.question_1_id, question: schedule.q1_text, options: [schedule.q1_a, schedule.q1_b, schedule.q1_c, schedule.q1_d], correct_answer: schedule.q1_answer, category: schedule.q1_category, difficulty: schedule.q1_difficulty },
+      { id: schedule.question_2_id, question: schedule.q2_text, options: [schedule.q2_a, schedule.q2_b, schedule.q2_c, schedule.q2_d], correct_answer: schedule.q2_answer, category: schedule.q2_category, difficulty: schedule.q2_difficulty },
+      { id: schedule.question_3_id, question: schedule.q3_text, options: [schedule.q3_a, schedule.q3_b, schedule.q3_c, schedule.q3_d], correct_answer: schedule.q3_answer, category: schedule.q3_category, difficulty: schedule.q3_difficulty },
+    ];
+
+    if (schedule.question_4_id && schedule.q4_text) {
+      questions.push({ id: schedule.question_4_id, question: schedule.q4_text, options: [schedule.q4_a, schedule.q4_b, schedule.q4_c, schedule.q4_d], correct_answer: schedule.q4_answer, category: schedule.q4_category, difficulty: schedule.q4_difficulty });
+    }
+    if (schedule.question_5_id && schedule.q5_text) {
+      questions.push({ id: schedule.question_5_id, question: schedule.q5_text, options: [schedule.q5_a, schedule.q5_b, schedule.q5_c, schedule.q5_d], correct_answer: schedule.q5_answer, category: schedule.q5_category, difficulty: schedule.q5_difficulty });
+    }
+
     return {
       date: schedule.quiz_date,
       is_published: schedule.is_published,
-      questions: [
-        { id: schedule.question_1_id, question: schedule.q1_text, options: [schedule.q1_a, schedule.q1_b, schedule.q1_c, schedule.q1_d], correct_answer: schedule.q1_answer, category: schedule.q1_category, difficulty: schedule.q1_difficulty },
-        { id: schedule.question_2_id, question: schedule.q2_text, options: [schedule.q2_a, schedule.q2_b, schedule.q2_c, schedule.q2_d], correct_answer: schedule.q2_answer, category: schedule.q2_category, difficulty: schedule.q2_difficulty },
-        { id: schedule.question_3_id, question: schedule.q3_text, options: [schedule.q3_a, schedule.q3_b, schedule.q3_c, schedule.q3_d], correct_answer: schedule.q3_answer, category: schedule.q3_category, difficulty: schedule.q3_difficulty },
-      ],
+      questions,
     };
   },
 
   getRange(startDate, endDate) {
     return getDb().prepare(`
-      SELECT ds.*, 
+      SELECT ds.*,
         q1.category as q1_category, q2.category as q2_category, q3.category as q3_category
       FROM daily_schedule ds
       JOIN questions q1 ON ds.question_1_id = q1.id
@@ -286,12 +304,12 @@ const scheduleQueries = {
     `).all(startDate, endDate);
   },
 
-  create(date, q1Id, q2Id, q3Id, createdBy = "system") {
+  create(date, q1Id, q2Id, q3Id, q4Id, q5Id, createdBy = "system") {
     const db = getDb();
     return db.prepare(`
-      INSERT OR REPLACE INTO daily_schedule (quiz_date, question_1_id, question_2_id, question_3_id, created_by)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(date, q1Id, q2Id, q3Id, createdBy);
+      INSERT OR REPLACE INTO daily_schedule (quiz_date, question_1_id, question_2_id, question_3_id, question_4_id, question_5_id, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(date, q1Id, q2Id, q3Id, q4Id || null, q5Id || null, createdBy);
   },
 
   publish(date) {
@@ -317,32 +335,33 @@ const scheduleQueries = {
 
   autoSchedule(date) {
     const db = getDb();
-    // Pick 1 SA, 1 global, 1 wildcard from approved questions
     const saCategories = ["SA Rugby", "SA Cricket", "SA Football"];
     const globalCategories = ["Formula 1", "Golf", "Tennis", "Premier League", "Champions League", "Olympics", "World Football"];
 
     const saQ = db.prepare(`
-      SELECT id FROM questions 
+      SELECT id FROM questions
       WHERE status = 'approved' AND category IN (${saCategories.map(() => "?").join(",")})
       ORDER BY RANDOM() LIMIT 1
     `).get(...saCategories);
 
     const globalQ = db.prepare(`
-      SELECT id FROM questions 
+      SELECT id FROM questions
       WHERE status = 'approved' AND category IN (${globalCategories.map(() => "?").join(",")})
       AND id != ?
       ORDER BY RANDOM() LIMIT 1
     `).get(...globalCategories, saQ?.id || 0);
 
-    const wildcardQ = db.prepare(`
-      SELECT id FROM questions 
+    // Pick 3 more from any approved questions not already chosen
+    const usedIds = [saQ?.id || 0, globalQ?.id || 0];
+    const extra = db.prepare(`
+      SELECT id FROM questions
       WHERE status = 'approved' AND id NOT IN (?, ?)
-      ORDER BY RANDOM() LIMIT 1
-    `).get(saQ?.id || 0, globalQ?.id || 0);
+      ORDER BY RANDOM() LIMIT 3
+    `).all(...usedIds);
 
-    if (!saQ || !globalQ || !wildcardQ) return null;
+    if (!saQ || !globalQ || extra.length < 3) return null;
 
-    return scheduleQueries.create(date, saQ.id, globalQ.id, wildcardQ.id, "auto");
+    return scheduleQueries.create(date, saQ.id, globalQ.id, extra[0].id, extra[1].id, extra[2].id, "auto");
   },
 };
 
@@ -377,6 +396,7 @@ const playerQueries = {
     const newStreak = player.last_played_date === yesterdayStr ? player.streak + 1 : 1;
     const newLongest = Math.max(player.longest_streak, newStreak);
 
+    // total_games increments here only — single source of truth
     db.prepare(`
       UPDATE players SET
         streak = ?, longest_streak = ?, total_games = total_games + 1,
@@ -396,18 +416,27 @@ const playerQueries = {
 
   saveResult(playerId, quizDate, result) {
     const db = getDb();
+    // Support 3 or 5 questions — pad if needed
+    const ans = result.answers;
+    const tim = result.timings;
+    const cor = result.correct;
+
     return db.prepare(`
       INSERT INTO game_results (player_id, quiz_date,
         question_1_answer, question_1_time, question_1_correct,
         question_2_answer, question_2_time, question_2_correct,
         question_3_answer, question_3_time, question_3_correct,
+        question_4_answer, question_4_time, question_4_correct,
+        question_5_answer, question_5_time, question_5_correct,
         score, total_time)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       playerId, quizDate,
-      result.answers[0], result.timings[0], result.correct[0] ? 1 : 0,
-      result.answers[1], result.timings[1], result.correct[1] ? 1 : 0,
-      result.answers[2], result.timings[2], result.correct[2] ? 1 : 0,
+      ans[0], tim[0], cor[0] ? 1 : 0,
+      ans[1], tim[1], cor[1] ? 1 : 0,
+      ans[2], tim[2], cor[2] ? 1 : 0,
+      ans[3] !== undefined ? ans[3] : null, tim[3] !== undefined ? tim[3] : null, cor[3] !== undefined ? (cor[3] ? 1 : 0) : null,
+      ans[4] !== undefined ? ans[4] : null, tim[4] !== undefined ? tim[4] : null, cor[4] !== undefined ? (cor[4] ? 1 : 0) : null,
       result.score, result.totalTime
     );
   },
@@ -418,7 +447,7 @@ const playerQueries = {
     ).get(playerId, date);
   },
 
-  getLeaderboard(date, limit = 20) {
+  getLeaderboard(date, limit = 10) {
     return getDb().prepare(`
       SELECT gr.score, gr.total_time, p.display_name, p.streak
       FROM game_results gr
@@ -437,9 +466,9 @@ const playerQueries = {
 const analyticsQueries = {
   getDailyStats(days = 30) {
     return getDb().prepare(`
-      SELECT quiz_date, COUNT(*) as players, 
-        AVG(score) as avg_score, 
-        SUM(CASE WHEN score = 300 THEN 1 ELSE 0 END) as perfect_count,
+      SELECT quiz_date, COUNT(*) as players,
+        AVG(score) as avg_score,
+        SUM(CASE WHEN score = 500 THEN 1 ELSE 0 END) as perfect_count,
         AVG(total_time) as avg_time
       FROM game_results
       WHERE quiz_date >= date('now', '-' || ? || ' days')
@@ -454,15 +483,15 @@ const analyticsQueries = {
 
   getActivePlayers(days = 7) {
     return getDb().prepare(`
-      SELECT COUNT(DISTINCT player_id) as count 
-      FROM game_results 
+      SELECT COUNT(DISTINCT player_id) as count
+      FROM game_results
       WHERE quiz_date >= date('now', '-' || ? || ' days')
     `).all(days)[0]?.count || 0;
   },
 
   getCategoryPerformance() {
     return getDb().prepare(`
-      SELECT q.category, 
+      SELECT q.category,
         COUNT(*) as times_served,
         AVG(CASE WHEN gr.question_1_correct THEN 1.0 ELSE 0.0 END) as correct_rate
       FROM daily_schedule ds
@@ -488,7 +517,7 @@ const batchQueries = {
 
   complete(id, generated, approved) {
     getDb().prepare(`
-      UPDATE generation_batches 
+      UPDATE generation_batches
       SET status = 'completed', questions_generated = ?, questions_approved = ?, completed_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(generated, approved, id);

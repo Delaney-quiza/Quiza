@@ -1,5 +1,5 @@
 // frontend/src/api.js
-// API client for SportQ backend
+// API client for QuiZa backend
 
 const API_BASE = "/api";
 
@@ -103,6 +103,10 @@ export async function getPlayerStats() {
 
 export async function getTodayResult() {
   return playerRequest("/player/today");
+}
+
+export async function getLeaderboard() {
+  return playerRequest("/player/leaderboard");
 }
 
 // ═══════════════════════════════════════
