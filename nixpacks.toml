@@ -2,4 +2,4 @@
 cmds = ["npm install", "cd frontend && npx vite build"]
 
 [start]
-cmd = "npm run db:seed -- --force && node backend/server.js"
+cmd = "npm run db:seed && node backend/server.js"
