@@ -260,6 +260,16 @@ export default function Quiz() {
         }
       } catch (err) {
         setError(err.message);
+        if (err.message === "Already played today") {
+          try {
+            const [lb, todayData, statsData] = await Promise.all([
+              api.getLeaderboard(), api.getTodayResult(), api.getPlayerStats(),
+            ]);
+            setLeaderboard(lb.leaderboard || []);
+            setStats(statsData);
+            if (todayData.played) setResult({ score: todayData.result.score });
+          } catch {}
+        }
         setPhase("error");
       }
     })();
@@ -357,7 +367,7 @@ export default function Quiz() {
   // Countdown
   const [countdown, setCountdown] = useState("");
   useEffect(() => {
-    if (phase !== "results") return;
+    if (phase !== "results" && phase !== "error") return;
     const tick = () => {
       const now = new Date();
       const tom = new Date(now);
@@ -428,13 +438,31 @@ export default function Quiz() {
 
       {/* === ERROR === */}
       {phase === "error" && (
-        <div style={{textAlign:"center",padding:"60px 0",animation:"fadeScale .5s ease both"}}>
-          <div style={{fontSize:48,marginBottom:16}}>😔</div>
-          <h2 style={{fontFamily:S.serif,fontSize:22,color:"#fff",margin:"0 0 8px",fontWeight:700}}>Eish!</h2>
-          <p style={{color:"#888",fontSize:13,maxWidth:320,margin:"0 auto"}}>{error === "Invalid player token" ? "Your session expired. Tap Try Again to start fresh!" : (error || "Something went wrong. Try refreshing.")}</p>
-          <button onClick={() => window.location.reload()} style={{marginTop:24,background:"#1a1a1e",border:"1px solid #2a2a2e",borderRadius:100,padding:"12px 32px",color:"#ccc",fontSize:13,fontWeight:600,cursor:"pointer"}}>
-            Try Again
-          </button>
+        <div style={{animation:"fadeScale .5s ease both"}}>
+          {error === "Already played today" ? (
+            <>
+              <div style={{textAlign:"center",padding:"40px 0 24px"}}>
+                <div style={{fontSize:48,marginBottom:16}}>✅</div>
+                <h2 style={{fontFamily:S.serif,fontSize:22,color:"#fff",margin:"0 0 8px",fontWeight:700}}>You've played today!</h2>
+                <p style={{color:"#888",fontSize:13,maxWidth:320,margin:"0 auto 8px"}}>Come back tomorrow for a new quiz.</p>
+                {/* Countdown */}
+                <div style={{marginTop:16}}>
+                  <p style={{color:"#555",fontSize:11,margin:"0 0 4px",textTransform:"uppercase",letterSpacing:1}}>Next quiz in</p>
+                  <p style={{fontFamily:S.serif,fontSize:28,color:"#fff",margin:0,fontWeight:700,letterSpacing:4}}>{countdown}</p>
+                </div>
+              </div>
+              <Scoreboard entries={leaderboard} myScore={result?.score} />
+            </>
+          ) : (
+            <div style={{textAlign:"center",padding:"60px 0"}}>
+              <div style={{fontSize:48,marginBottom:16}}>😔</div>
+              <h2 style={{fontFamily:S.serif,fontSize:22,color:"#fff",margin:"0 0 8px",fontWeight:700}}>Eish!</h2>
+              <p style={{color:"#888",fontSize:13,maxWidth:320,margin:"0 auto"}}>{error === "Invalid player token" ? "Your session expired. Tap Try Again to start fresh!" : (error || "Something went wrong. Try refreshing.")}</p>
+              <button onClick={() => window.location.reload()} style={{marginTop:24,background:"#1a1a1e",border:"1px solid #2a2a2e",borderRadius:100,padding:"12px 32px",color:"#ccc",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                Try Again
+              </button>
+            </div>
+          )}
         </div>
       )}
 
