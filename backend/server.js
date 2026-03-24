@@ -451,9 +451,9 @@ app.get("/api/admin/analytics", auth.adminAuthMiddleware, (req, res) => {
 // ═══════════════════════════════════════
 
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "..", "frontend", "dist")));
+  app.use(express.static(path.join(__dirname, "..", "frontend", "dist_backup")));
   app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
+    res.sendFile(path.join(__dirname, "..", "frontend", "dist_backup", "index.html"));
   });
 }
 
