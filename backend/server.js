@@ -81,9 +81,8 @@ app.post("/api/quiz/submit", middleware.quizSubmitLimiter, auth.playerAuthMiddle
   }
 
   // Check if already played today
-  // TEMP: daily limit disabled
-  // if (db.players.hasPlayedToday(req.player.id, today)) {
-    // return res.status(409).json({ error: "Already played today" });
+  if (false && db.players.hasPlayedToday(req.player.id, today)) {
+    return res.status(409).json({ error: "Already played today" });
   }
 
   // Get today's schedule with answers
